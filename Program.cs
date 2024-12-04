@@ -1,6 +1,5 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using MediaPlayer;
-using SimpleToDoList.Models;
 // Set the path to your GStreamer installation
 string gstreamerPath = @"D:\gstreamer\1.0\mingw_x86";
 string gstreamerPluginPath = @"D:\gstreamer\1.0\mingw_x86_64\lib\gstreamer-1.0";
@@ -9,6 +8,7 @@ string gstreamerPluginPath = @"D:\gstreamer\1.0\mingw_x86_64\lib\gstreamer-1.0";
 //Environment.SetEnvironmentVariable("PATH", gstreamerPath + ";" + Environment.GetEnvironmentVariable("PATH"));
 Environment.SetEnvironmentVariable("GST_PLUGIN_PATH", gstreamerPluginPath);
 Environment.SetEnvironmentVariable("GST_DEBUG", "2");
+Environment.SetEnvironmentVariable("GST_DEBUG_DUMP_DOT_DIR", @"D:/Projects/MediaPlayer");
 Console.WriteLine("Hello, World!");
 MediaPlayer.MediaPlayer mediaPlayer = new MediaPlayer.MediaPlayer(@"D:/happytime-multi-onvif-server/happytime-multi-onvif-server/happytime-rtsp-server/atcc/SingleExportVideo.mp4");
 mediaPlayer.Play();
@@ -19,13 +19,13 @@ while (playvideo)
     switch (keyInfo.Key)
     {
         case ConsoleKey.Spacebar:
-            if (mediaPlayer.MediaState == Gst.State.Paused)
+            if (mediaPlayer.IsPlaying)
             {
-                mediaPlayer.Play();
+                mediaPlayer.Pause();
             }
             else
             {
-                mediaPlayer.Pause();
+                mediaPlayer.Play();
             }
 
             break;
@@ -36,10 +36,10 @@ while (playvideo)
             Console.WriteLine(mediaPlayer.GetVideoInfo().ToString());
             break;
         case ConsoleKey.D:
-            Console.WriteLine(mediaPlayer.GetDuration());
+            Console.WriteLine(mediaPlayer.Duration);
             break;
         case ConsoleKey.P:
-            Console.WriteLine(mediaPlayer.GetProgress());
+            Console.WriteLine(mediaPlayer.Position);
             break;
         case ConsoleKey.Q:
             playvideo = false;
