@@ -9,322 +9,357 @@ using Gst.Video;
 using GLib;
 using Gst.App;
 
-namespace SimpleToDoList.Models
+namespace MediaPlayer
 {
-
-    // TODO:: Video rendering is remaining
-    public class MediaPlayer
+    public class MediaPlayer : IDisposable
     {
         private Pipeline _pipeline;
         private string _mediaUri;
         private Element _videoSink;
-        private  Bus _bus;
-        public event Action<State, State> OnStateChanged;
-        public State mediaState { get; private set; } = State.Null;
-        private Sample? _lastSample; // Store the most recent sample for snapshotElement appSinkTemp
+        private Bus _bus;
         private AppSink _appSink;
-        // Metadata variables
-        int width = 0, height = 0;
-        double  framerate = 25.0;
+        public event Action<State, State> OnStateChanged;
+        public State MediaState { get; private set; } = State.Null;
 
-        // Flag to indicate metadata is retrieved
-        bool metadataRetrieved = false;
+        private Sample _lastSample;
+        private object _sampleLock = new object();
+
+        // Metadata properties
+        public int Width { get; private set; }
+        public int Height { get; private set; }
+        public double Framerate { get; private set; }
+        public string Codec { get; private set; }
+        private bool localFile = false;
 
         static MediaPlayer()
         {
             Gst.Application.Init();
         }
 
-
         public MediaPlayer(string mediaUri)
         {
             _mediaUri = mediaUri;
-
         }
+
         private void InitializePipeline()
         {
             if (_pipeline != null) return;
 
-            // Set up video sink for rendering
-            _videoSink = ElementFactory.Make("glimagesink", "video_sink");
-            if (_videoSink == null)
-            {
-                throw new InvalidOperationException("Failed to create video sink (glimagesink). Make sure GStreamer is installed properly.");
-            }
-
             string pipelineDescription;
             if (_mediaUri.StartsWith("rtsp://"))
             {
-                pipelineDescription = $"rtspsrc location={_mediaUri} ! decodebin ! autovideosink name=videoSink";
+                // For RTSP streams, use rtspsrc and include tee for snapshot capability
+                pipelineDescription =
+                    $"rtspsrc location={_mediaUri} ! decodebin ! tee name=t !" +
+                    $" queue ! videoconvert !  appsink name=snapsink  t. ! " +
+                    $"queue ! videoconvert ! autovideosink";
             }
             else
             {
-                pipelineDescription = $"filesrc location={_mediaUri} ! decodebin ! autovideosink name=videoSink";
+                localFile = true;
+                // For local files, use filesrc and include tee for snapshot capability
+                pipelineDescription =
+                    $"filesrc location={_mediaUri} ! decodebin ! tee name=t !" +
+                    $" queue ! videoconvert !  appsink name=snapsink  t. ! " +
+                    $"queue ! videoconvert ! autovideosink";
             }
 
-            _pipeline = Parse.Launch(pipelineDescription) as Pipeline;
-
-            _bus = _pipeline.Bus;
-            _bus.AddSignalWatch();
-            _bus.Message += OnBusMessage;
-
-
-            //_appSink = _pipeline.GetByName("videoSink");
-
-            if (_pipeline == null || _appSink == null)
+            try
             {
-                Console.WriteLine("Pipeline or appsink is not initialized.");
-                return;
+                _pipeline = Parse.Launch(pipelineDescription) as Pipeline;
+                if (_pipeline == null)
+                    throw new InvalidOperationException("Failed to create pipeline");
+
+                // List all elements in pipeline for debugging
+                var iterator = _pipeline.IterateElements();
+                GLib.Value element;
+                while (iterator.Next(ref element))
+                {
+                    Console.WriteLine($"Found element: {element.Name} of type {element.GetType()}");
+                }
+
+                // Try getting the appsink directly after creation
+                var element = _pipeline.GetByName("snapsink");
+                Console.WriteLine($"Found element by name 'snapsink': {element != null}");
+
+                if (element != null)
+                {
+                    Console.WriteLine($"Element type: {element.GetType()}");
+                    _appSink = element as AppSink;
+                    Console.WriteLine($"Cast to AppSink successful: {_appSink != null}");
+                }
+
+
+                // Set up bus monitoring
+                _bus = _pipeline.Bus;
+                _bus.AddSignalWatch();
+                _bus.Message += OnBusMessage;
+
+                // Configure AppSink for snapshots
+                _appSink = _pipeline.GetByName("snapsink") as AppSink;
+                if (_appSink != null)
+                {
+                    _appSink.EmitSignals = true;
+                    _appSink.NewSample += OnNewSample;
+                }
+
+                // Connect to pad-added signal for metadata extraction
+                var decode = _pipeline.GetByName("decodebin0");
+                if (decode != null)
+                {
+                    decode.PadAdded += OnPadAdded;
+                }
+                _pipeline.
             }
-
-            //// Configure the appsink
-            //_appSink.EmitSignals = true;
-            //_appSink.Caps = Caps.FromString("video/x-raw,format=RGB");
-            //_appSink.NewSample += OnNewSample;
-
-
-
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to initialize pipeline: {ex.Message}");
+            }
         }
 
-        private void OnBusMessage(object? sender, MessageArgs args)
+        private void OnNewSample(object sender, NewSampleArgs args)
         {
-            var message = args.Message;
-
-            // Handle state change messages
-            if (message.Type == MessageType.StateChanged)
+            if (sender is AppSink appSink)
             {
-                message.ParseStateChanged(out State oldState, out State newState, out State _);
-
-                // Notify subscribers about the state change
-                OnStateChanged?.Invoke(oldState, newState);
-                mediaState = newState;
-
-                // Debug output (optional)
-                Console.WriteLine($"State changed: {oldState} -> {newState} )");
+                lock (_sampleLock)
+                {
+                    _lastSample?.Dispose();
+                    _lastSample = appSink.PullSample();
+                }
             }
         }
 
+        public bool TakeSnapshot(string filePath)
+        {
+            var stateChangeReturn = _pipeline.GetState(out State state, out State pending, Gst.Constants.SECOND * 1);
+            if (state != State.Playing)
+                return false;
+
+            Sample sample;
+            lock (_sampleLock)
+            {
+                if (_lastSample == null)
+                    return false;
+                sample = _lastSample;
+            }
+
+            try
+            {
+                using var buffer = sample.Buffer;
+                if (!buffer.Map(out MapInfo info, MapFlags.Read))
+                    return false;
+
+                try
+                {
+                    var caps = sample.Caps;
+                    var structure = caps.GetStructure(0);
+
+                    structure.GetInt("width", out int width);
+                    structure.GetInt("height", out int height);
+
+                    using var bitmap = new System.Drawing.Bitmap(
+                        width,
+                        height,
+                        width * 3,
+                        System.Drawing.Imaging.PixelFormat.Format24bppRgb,
+                        info.DataPtr);
+
+                    bitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
+                    return true;
+                }
+                finally
+                {
+                    buffer.Unmap(info);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to take snapshot: {ex.Message}");
+                return false;
+            }
+        }
+
+        public TimeSpan? GetDuration()
+        {
+            if (_pipeline == null)
+                return null;
+
+            // Only try to get duration for file-based media (not RTSP streams)
+            if (_mediaUri.StartsWith("rtsp://"))
+                return null;
+
+            // Query the duration in nanoseconds
+            if (_pipeline.QueryDuration(Format.Time, out long durationNanoseconds))
+            {
+                // Convert from nanoseconds to TimeSpan
+                return TimeSpan.FromTicks(durationNanoseconds / 100);
+            }
+
+            return null;
+        }
+
+        public TimeSpan? GetCurrentPosition()
+        {
+            if (_pipeline == null)
+                return null;
+
+            // Query the position in nanoseconds
+            if (_pipeline.QueryPosition(Format.Time, out long positionNanoseconds))
+            {
+                // Convert from nanoseconds to TimeSpan
+                return TimeSpan.FromTicks(positionNanoseconds / 100);
+            }
+
+            return null;
+        }
+
+        // Helper method to get progress percentage
+        public double? GetProgress()
+        {
+            var position = GetCurrentPosition();
+            var duration = GetDuration();
+
+            if (position.HasValue && duration.HasValue && duration.Value.Ticks > 0)
+            {
+                return (position.Value.Ticks * 100.0) / duration.Value.Ticks;
+            }
+
+            return null;
+        }
+
+        public bool SetPlaybackRate(double rate)
+        {
+            if (_pipeline == null || rate <= 0)
+                return false;
+
+            var seekFlags = SeekFlags.Flush | SeekFlags.Accurate;
+            Format format = Format.Time;
+
+            // Get current position
+            if (!_pipeline.QueryPosition(format, out long position))
+                position = 0;
+
+            try
+            {
+                return _pipeline.Seek(rate, format, seekFlags, Gst.SeekType.Set, position, Gst.SeekType.None, -1);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to set playback rate: {ex.Message}");
+                return false;
+            }
+        }
+
+        private void OnPadAdded(object o, PadAddedArgs args)
+        {
+            var pad = args.NewPad;
+            var caps = pad.CurrentCaps;
+            if (caps != null)
+            {
+                var structure = caps.GetStructure(0);
+                if (structure.Name.StartsWith("video/"))
+                {
+                    if (structure.GetInt("width", out int width))
+                        Width = width;
+
+                    if (structure.GetInt("height", out int height))
+                        Height = height;
+
+                    if (structure.GetFraction("framerate", out int num, out int denom))
+                        Framerate = (double)num / denom;
+
+                    Codec = structure.Name;
+                }
+            }
+        }
+
+        private void OnBusMessage(object o, MessageArgs args)
+        {
+            var msg = args.Message;
+            switch (msg.Type)
+            {
+                case MessageType.StateChanged:
+                    msg.ParseStateChanged(out State oldState, out State newState, out _);
+                    MediaState = newState;
+                    OnStateChanged?.Invoke(oldState, newState);
+                    break;
+
+                case MessageType.Error:
+                    msg.ParseError(out GException err, out string debug);
+                    Console.WriteLine($"Pipeline error: {err.Message} ({debug})");
+                    Stop();
+                    break;
+
+                case MessageType.Eos:
+                    Console.WriteLine("End of stream reached");
+                    Stop();
+                    break;
+            }
+        }
 
         public void Play()
         {
             InitializePipeline();
-            _pipeline.SetState(State.Playing);
-            Console.WriteLine("Playback started.");
+            _pipeline?.SetState(State.Playing);
         }
 
         public void Pause()
         {
-            if (_pipeline != null)
-            {
-                _pipeline.SetState(State.Paused);
-                Console.WriteLine("Playback paused.");
-            }
+            _pipeline?.SetState(State.Paused);
         }
 
         public void Stop()
         {
-            if (_pipeline != null)
-            {
-                _pipeline.SetState(State.Null);
-                Console.WriteLine("Playback stopped.");
-            }
+            _pipeline?.SetState(State.Ready);
         }
 
-        public void Resume()
+        public void Seek(TimeSpan position)
         {
-            if (_pipeline != null)
-            {
-                _pipeline.SetState(State.Playing);
-                Console.WriteLine("Playback resumed.");
-            }
-        }
-
-        private void OnNewSample(object o, NewSampleArgs args)
-        {
-            // Access the sample from the args
-            var appsink = (AppSink)o;
-            _lastSample = appsink.TryPullSample(50000000);
-            Console.WriteLine("New sample received.");
-        }
-        public void TakeSnapshot(string filePath)
-        {
-
-
-            // Ensure a sample is available
-            if (_lastSample == null)
-            {
-                Console.WriteLine("No video frame available for snapshot.");
+            if (_pipeline == null)
                 return;
-            }
 
-            // Retrieve buffer from the sample
-            var buffer = _lastSample.Buffer;
-            var caps = _lastSample.Caps;
-
-            // Map the buffer to access its data
-            if (buffer.Map(out MapInfo test, Gst.MapFlags.Read))
-            {
-                if (test.Size == 0)
-                {
-                    Console.WriteLine("Failed to read video buffer.");
-                    return;
-                }
-
-                // Retrieve width, height, and stride from caps
-                Structure capsStruct = caps.GetStructure(0);
-                capsStruct.GetInt("width",out int width);
-                capsStruct.GetInt("height", out int height);
-                int stride = width * 3; // 3 bytes per pixel for RGB
-
-                //Convert raw data to an image and save it
-                using (var bitmap = new System.Drawing.Bitmap(width, height, stride,
-                              System.Drawing.Imaging.PixelFormat.Format24bppRgb, test.DataPtr))
-                {
-                    bitmap.RotateFlip(System.Drawing.RotateFlipType.RotateNoneFlipY); // Flip vertically
-                    bitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
-                    Console.WriteLine($"Snapshot saved to {filePath}");
-                }
-            }
-
-            // Dispose of the sample
-            _lastSample.Dispose();
-            _lastSample = null;
+            var time = position.Ticks * 100; // Convert to nanoseconds
+            _pipeline.SeekSimple(
+                Format.Time,
+                SeekFlags.Flush | SeekFlags.KeyUnit,
+                time);
         }
 
-        public void SetPlaybackRate(double rate)
+        public TimeSpan Duration
         {
-            if (_pipeline == null) return;
-
-            // Adjust playback rate (fast forward or reverse)
-            var seekFlags = SeekFlags.Flush | SeekFlags.Accurate;
-            // if (rate < 0) seekFlags |= SeekFlags.Reverse;
-
-            var success = _pipeline.Seek(rate, Format.Time, seekFlags, Gst.SeekType.None, 0, Gst.SeekType.None, -1);
-            if (success)
+            get
             {
-                Console.WriteLine($"Playback rate set to {rate}x.");
-            }
-            else
-            {
-                Console.WriteLine("Failed to set playback rate.");
+                if (_pipeline?.QueryDuration(Format.Time, out long duration) == true)
+                    return TimeSpan.FromTicks(duration / 100);
+                return TimeSpan.Zero;
             }
         }
 
-        void OnPadAdded(Element src, Pad newPad)
+        public TimeSpan Position
         {
-            Caps caps = newPad.CurrentCaps;
-            if (caps != null)
+            get
             {
-                var structure = caps.GetStructure(0);
-                if (structure.HasField("width") && structure.HasField("height"))
-                {
-                    width = (int)structure.GetValue("width");
-                    height = (int)structure.GetValue("height");
-                }
-                if (structure.HasField("framerate"))
-                {
-                    var framerateStruct = structure.GetDouble("framerate");
-                    framerate = $"{framerateStruct.Numerator}/{framerateStruct.Denominator}";
-                }
-
-                metadataRetrieved = true; // Metadata successfully retrieved
+                if (_pipeline?.QueryPosition(Format.Time, out long position) == true)
+                    return TimeSpan.FromTicks(position / 100);
+                return TimeSpan.Zero;
             }
         }
 
-        /// <summary>
-        /// Retrieves video information such as FPS, resolution, and file size.
-        /// </summary>
-        /// <returns>A string containing video details.</returns>
-        public string GetVideoInfo()
+        public VideoInfo GetVideoInfo()
         {
-            if (_mediaUri.StartsWith("rtsp://"))
+            return new VideoInfo
             {
-                return "Video information is not available for live RTSP streams.";
-            }
-
-            if (!File.Exists(_mediaUri))
-            {
-                return "File does not exist.";
-            }
-
-            // Get file size
-            var fileInfo = new System.IO.FileInfo(_mediaUri);
-            long fileSize = fileInfo.Length; // File size in bytes
-
-            string pipelineDescription = $"filesrc location={_mediaUri} ! decodebin name=decoder ! fakesink";
-            using var pipeline = Parse.Launch(pipelineDescription) as Pipeline;
-
-            if (pipeline == null)
-            {
-                return "Failed to initialize pipeline to retrieve metadata.";
-            }
-
-            Element decoder = pipeline.GetByName("decoder");
-            if (decoder == null)
-            {
-                return "Failed to locate decoder element in the pipeline.";
-            }
-
-            // Metadata variables
-            int width = 0, height = 0;
-            double fps = 0;
-
-            // Connect to the "pad-added" signal of the decodebin element
-            decoder.Connect("pad-added", (Element src, Pad newPad) =>
-            {
-                Caps caps = newPad.CurrentCaps;
-                if (caps != null)
-                {
-                    var structure = caps.GetStructure(0);
-                    if (structure.HasField("width") && structure.HasField("height"))
-                    {
-                        width = (int)structure.GetValue("width");
-                        height = (int)structure.GetValue("height");
-                    }
-                    if (structure.HasField("framerate"))
-                    {
-                        fps = (double)structure.GetValue("framerate");
-                    }
-                }
-            });
-
-            // Start the pipeline to trigger pad-added signals
-            pipeline.SetState(State.Paused);
-
-            // Wait for the pipeline to reach the paused state
-            var stateChangeResult = pipeline.GetState(out State state, out _, Gst.Constants.CLOCK_TIME_NONE);
-            if (stateChangeResult != StateChangeReturn.Success || state != State.Paused)
-            {
-                return "Failed to retrieve metadata from the file.";
-            }
-
-            pipeline.SetState(State.Null); // Cleanup pipeline
-
-            if (width > 0 && height > 0)
-            {
-                return $"Resolution: {width}x{height}, FPS: {fps}, File Size: {fileSize / (1024 * 1024)} MB";
-            }
-
-            return "Failed to retrieve video information.";
+                Width = this.Width,
+                Height = this.Height,
+                Framerate = this.Framerate,
+                Codec = this.Codec,
+                Duration = this.Duration,
+                IsStreaming = _mediaUri.StartsWith("rtsp://"),
+                FileSize = !_mediaUri.StartsWith("rtsp://") && File.Exists(_mediaUri)
+                    ? new System.IO.FileInfo(_mediaUri).Length
+                    : 0
+            };
         }
-        public TimeSpan GetDuration()
-        {
-            if (_pipeline.QueryDuration(Format.Time, out long durationNanoseconds))
-            {
-                return TimeSpan.FromTicks(durationNanoseconds / 100); // Convert nanoseconds to TimeSpan
-            }
-            return TimeSpan.Zero;
-        }
-
-        public TimeSpan GetCurrentPosition()
-        {
-            if (_pipeline.QueryPosition(Format.Time, out long positionNanoseconds))
-            {
-                return TimeSpan.FromTicks(positionNanoseconds / 100); // Convert nanoseconds to TimeSpan
-            }
-            return TimeSpan.Zero;
-        }
-
 
         public void Dispose()
         {
@@ -334,6 +369,27 @@ namespace SimpleToDoList.Models
                 _pipeline.Dispose();
                 _pipeline = null;
             }
+
+            _lastSample?.Dispose();
+            _lastSample = null;
         }
     }
+
+    public class VideoInfo
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public double Framerate { get; set; }
+        public string Codec { get; set; }
+        public TimeSpan Duration { get; set; }
+        public bool IsStreaming { get; set; }
+        public long FileSize { get; set; }
+        public override string ToString()
+        {
+            string info = "Width " + Width + " : Height " + Height + " : FrameRate " + Framerate;
+            return info;
+
+        }
+    }
+
 }
