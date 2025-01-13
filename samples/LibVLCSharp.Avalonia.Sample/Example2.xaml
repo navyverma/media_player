@@ -30,7 +30,10 @@
           <Button Content="-1s" Command="{Binding BackwardCommand}" />
           <Button Content="+1s" Command="{Binding ForwardCommand}" />
           <Button Content="Next Frame" Command="{Binding NextFrameCommand}" />
-        </StackPanel>
+                    <Button Content="Snapshot" Command="{Binding SnapshotCommand}" />
+                    <Button Content="Fast Forward" Command="{Binding FastForwardCommand}" />
+                    <Button Content="Reverse" Command="{Binding ReverseCommand}" />
+                </StackPanel>
 
         <Grid ColumnDefinitions="Auto,*" Grid.Column="1">
           <TextBlock Text="{Binding State, StringFormat='State:\{0\}'}" Grid.Column="0" VerticalAlignment="Center" />

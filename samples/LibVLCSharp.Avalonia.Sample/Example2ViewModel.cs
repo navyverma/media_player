@@ -100,8 +100,10 @@ namespace LibVLCSharp.Avalonia.Sample
             PlayCommand = ReactiveCommand.Create(
                () => Op(() =>
                {
-                   string absolute = new Uri(MediaUrl).AbsoluteUri;
-                   bool isfile = absolute.StartsWith("file://");
+                   //string absolute = new Uri(MediaUrl).AbsoluteUri;
+                   bool isrtsp = MediaUrl.StartsWith("rtsp://");
+                   bool ishttp = MediaUrl.StartsWith("http://");
+                   bool isfile = !isrtsp && !ishttp;
                    MediaPlayer.Media = new Media(_libVLC, MediaUrl, isfile ? FromType.FromPath : FromType.FromLocation);
                    MediaPlayer.Play();
                }),
@@ -125,6 +127,16 @@ namespace LibVLCSharp.Avalonia.Sample
 
             NextFrameCommand = ReactiveCommand.Create(
                 () => MediaPlayer.NextFrame(),
+                stateChanged.Select(_ => active()));
+
+            SnapshotCommand = ReactiveCommand.Create(
+                () => MediaPlayer.TakeSnapshot(0,"test.jpg",0,0),
+                stateChanged.Select(_ => active()));
+            FastForwardCommand = ReactiveCommand.Create(
+                () => MediaPlayer.SetRate(32),
+                stateChanged.Select(_ => active()));
+            ReverseCommand = ReactiveCommand.Create(
+                () => MediaPlayer.SetRate(-1),
                 stateChanged.Select(_ => active()));
 
             OpenCommand = ReactiveCommand.CreateFromTask(async () =>
@@ -214,6 +226,9 @@ namespace LibVLCSharp.Avalonia.Sample
         public ICommand ForwardCommand { get; }
         public ICommand BackwardCommand { get; }
         public ICommand NextFrameCommand { get; }
+        public ICommand SnapshotCommand { get; }
+        public ICommand FastForwardCommand { get; }
+        public ICommand ReverseCommand { get; }
         public ICommand OpenCommand { get; }
 
         public IEnumerable Played => _played;
