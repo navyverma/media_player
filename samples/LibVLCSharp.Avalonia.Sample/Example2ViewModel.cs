@@ -102,10 +102,12 @@ namespace LibVLCSharp.Avalonia.Sample
                {
                    //string absolute = new Uri(MediaUrl).AbsoluteUri;
                    bool isrtsp = MediaUrl.StartsWith("rtsp://");
+                   bool isrtsps = MediaUrl.StartsWith("rtsps://");
                    bool ishttp = MediaUrl.StartsWith("http://");
-                   bool isfile = !isrtsp && !ishttp;
+                   bool isfile = !isrtsp && !ishttp && !isrtsps;
                    MediaPlayer.Media = new Media(_libVLC, MediaUrl, isfile ? FromType.FromPath : FromType.FromLocation);
-                   MediaPlayer.Play();
+                   bool result = MediaPlayer.Play();
+                   Console.WriteLine(result);
                }),
                hasMediaObservable);
 
@@ -136,7 +138,10 @@ namespace LibVLCSharp.Avalonia.Sample
                 () => MediaPlayer.SetRate(32),
                 stateChanged.Select(_ => active()));
             ReverseCommand = ReactiveCommand.Create(
-                () => MediaPlayer.SetRate(-1),
+                () => {
+                    int result = MediaPlayer.SetRate(-1);
+                    Console.WriteLine(result);
+                },
                 stateChanged.Select(_ => active()));
 
             OpenCommand = ReactiveCommand.CreateFromTask(async () =>
@@ -150,7 +155,7 @@ namespace LibVLCSharp.Avalonia.Sample
                 }
             });
 
-            MediaUrl = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+            MediaUrl = "D:\\happytime-multi-onvif-server\\happytime-multi-onvif-server\\happytime-rtsp-server\\abandon4.mp4";
 
             Wrap(playingChanged).Subscribe(_ =>
             {
