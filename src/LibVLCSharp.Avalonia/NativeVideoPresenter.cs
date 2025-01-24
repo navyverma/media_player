@@ -9,9 +9,9 @@ using Avalonia.VisualTree;
 using LibVLCSharp.Shared;
 using System;
 using System.Linq;
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
 using System.Runtime.InteropServices;
+using System.Reactive.Linq;
+using System.Reactive.Disposables;
 
 namespace LibVLCSharp.Avalonia
 {
@@ -64,11 +64,11 @@ namespace LibVLCSharp.Avalonia
 
             InitializeNativeOverlay();
 
-            _isEffectivellyVisibleSub = this.GetVisualAncestors().OfType<IControl>()
-                    .Select(v => v.GetObservable(IsVisibleProperty))
-                    .CombineLatest(v => !v.Any(o => !o))
-                    .DistinctUntilChanged()
-                    .Subscribe(v => IsVisible = v);
+            _isEffectivellyVisibleSub = this.GetVisualAncestors()
+                .Select(v => v.GetObservable(IsVisibleProperty))
+                .CombineLatest(v => !v.Any(o => !o))
+                .DistinctUntilChanged()
+                .Subscribe(v => IsVisible = v);
         }
 
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -94,14 +94,14 @@ namespace LibVLCSharp.Avalonia
 
         private void InitializeNativeOverlay()
         {
-            if (!((IVisual)this).IsAttachedToVisualTree) return;
+            if (!this.IsAttachedToVisualTree()) return;
 
             if (_floatingContent == null && Content != null)
             {
                 _floatingContent = new Window()
                 {
                     SystemDecorations = SystemDecorations.None,
-                    TransparencyLevelHint = WindowTransparencyLevel.Transparent,
+                    TransparencyLevelHint = new[] { WindowTransparencyLevel.Transparent },
                     Background = Brushes.Transparent,
                     SizeToContent = SizeToContent.WidthAndHeight,
                     ShowInTaskbar = false,

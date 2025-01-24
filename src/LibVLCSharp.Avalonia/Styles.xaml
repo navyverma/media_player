@@ -7,13 +7,13 @@
   <Style Selector="local|VideoView">
     <Setter Property="Background" Value="Black" />
     <Setter Property="Template">
-      <ControlTemplate>
+      <!--<ControlTemplate>
         <Panel Background="{TemplateBinding Background}">
-          <!--<Image Name="PART_RenderImage" />-->
+          --><!--<Image Name="PART_RenderImage" />--><!--
           <local:VLCImageRenderer Name="PART_RenderImage" DisplayRenderStats="{TemplateBinding DisplayRenderStats}" />
           <ContentPresenter Content="{TemplateBinding Content}" />
         </Panel>
-      </ControlTemplate>
+      </ControlTemplate>-->
     </Setter>
   </Style>
   <Style Selector="local|VideoView[VlcRenderingOptions=VlcNative]">

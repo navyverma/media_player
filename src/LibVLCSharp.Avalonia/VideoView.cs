@@ -4,8 +4,6 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
 using LibVLCSharp.Shared;
 using System;
-using System.Reactive.Linq;
-using System.Runtime.InteropServices;
 
 namespace LibVLCSharp.Avalonia
 {
@@ -21,7 +19,7 @@ namespace LibVLCSharp.Avalonia
             VlcRenderingOptions = LibVLCAvaloniaOptions.RenderingOptions;
         }
 
-        private VlcVideoSourceProvider _provider = new VlcVideoSourceProvider();
+        //private VlcVideoSourceProvider _provider = new VlcVideoSourceProvider();
         private Image PART_Image;
         private NativeVideoPresenter PART_NativeHost;
         private bool _templateApplied;
@@ -66,18 +64,18 @@ namespace LibVLCSharp.Avalonia
 
             _templateApplied = true;
 
-            if (VlcRenderingOptions != LibVLCAvaloniaRenderingOptions.VlcNative)
-            {
-                if (PART_Image is VLCImageRenderer vb)
-                {
-                    vb.SourceProvider = _provider;
-                    vb.UseCustomDrawingOperation = VlcRenderingOptions == LibVLCAvaloniaRenderingOptions.AvaloniaCustomDrawingOperation;
-                }
-                else
-                {
-                    PART_Image.Bind(Image.SourceProperty, _provider.Display);
-                }
-            }
+            //if (VlcRenderingOptions != LibVLCAvaloniaRenderingOptions.VlcNative)
+            //{
+            //    if (PART_Image is VLCImageRenderer vb)
+            //    {
+            //        vb.SourceProvider = _provider;
+            //        vb.UseCustomDrawingOperation = VlcRenderingOptions == LibVLCAvaloniaRenderingOptions.AvaloniaCustomDrawingOperation;
+            //    }
+            //    else
+            //    {
+            //        PART_Image.Bind(Image.SourceProperty, _provider.Display);
+            //    }
+            //}
 
             InitMediaPlayer();
         }
@@ -94,27 +92,27 @@ namespace LibVLCSharp.Avalonia
                 if (MediaPlayer.IsPlaying)
                     throw new NotSupportedException("Player should be stopped during initialization!");
 
-                if (VlcRenderingOptions != LibVLCAvaloniaRenderingOptions.VlcNative)
-                {
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                        MediaPlayer.Hwnd = IntPtr.Zero;
-                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                        MediaPlayer.NsObject = IntPtr.Zero;
-                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                        MediaPlayer.XWindow = 0;
+                //if (VlcRenderingOptions != LibVLCAvaloniaRenderingOptions.VlcNative)
+                //{
+                //    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                //        MediaPlayer.Hwnd = IntPtr.Zero;
+                //    else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                //        MediaPlayer.NsObject = IntPtr.Zero;
+                //    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                //        MediaPlayer.XWindow = 0;
 
-                    _provider.Init(MediaPlayer);
-                    _playerEvents = Observable.FromEventPattern(MediaPlayer, nameof(MediaPlayer.Playing))
-                        .ObserveOn(AvaloniaScheduler.Instance)
-                        .Subscribe(_ =>
-                        {
-                            if (PART_Image is VLCImageRenderer vb)
-                            {
-                                vb.ResetStats();
-                            }
-                        });
-                }
-                else
+                //    _provider.Init(MediaPlayer);
+                //    _playerEvents = Observable.FromEventPattern(MediaPlayer, nameof(MediaPlayer.Playing))
+                //        .ObserveOn(AvaloniaScheduler.Instance)
+                //        .Subscribe(_ =>
+                //        {
+                //            if (PART_Image is VLCImageRenderer vb)
+                //            {
+                //                vb.ResetStats();
+                //            }
+                //        });
+                //}
+                //else
                 {
                     PART_NativeHost?.UpdatePlayerHandle(MediaPlayer);
                 }

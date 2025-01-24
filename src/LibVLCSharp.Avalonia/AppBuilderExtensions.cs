@@ -1,12 +1,12 @@
-﻿using Avalonia.Controls;
+﻿using Avalonia;
+using Avalonia.Controls;
 using LibVLCSharp.Shared;
 
 namespace LibVLCSharp.Avalonia
 {
     public static class AppBuilderExtensions
     {
-        public static T UseVLCSharp<T>(this AppBuilderBase<T> b, LibVLCAvaloniaRenderingOptions? renderingOptions = null, string libvlcDirectoryPath = null)
-            where T : AppBuilderBase<T>, new()
+        public static AppBuilder UseVLCSharp(this AppBuilder b, LibVLCAvaloniaRenderingOptions? renderingOptions = null, string libvlcDirectoryPath = null)
         {
             if (renderingOptions != null)
             {

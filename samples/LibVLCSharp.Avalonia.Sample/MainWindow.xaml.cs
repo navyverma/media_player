@@ -10,11 +10,11 @@ namespace LibVLCSharp.Avalonia.Sample
         {
             InitializeComponent();
 
-            //this.Get<Button>("example1").Click += (s, e) =>
-            //{
-            //    var w = new Example1();
-            //    w.Show();
-            //};
+            this.Get<Button>("example1").Click += (s, e) =>
+            {
+                var w = new Example1();
+                w.Show();
+            };
 
             this.Get<Button>("example2").Click += (s, e) =>
             {
