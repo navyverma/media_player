@@ -1,6 +1,7 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.ReactiveUI;
+using LibVLCSharp.Shared;
 
 namespace LibVLCSharp.Avalonia.Sample
 {
@@ -26,7 +27,15 @@ namespace LibVLCSharp.Avalonia.Sample
         // container, etc.
         private static void AppMain(Application app, string[] args)
         {
-            app.Run(new MainWindow());
+            app.Run(new Example2());
+        }
+    }
+
+    public static class AppBuilderExtensions
+    {
+        public static AppBuilder UseVLCSharp(this AppBuilder b, string libvlcDirectoryPath = null)
+        {
+            return b.AfterSetup(_ => Core.Initialize(libvlcDirectoryPath));
         }
     }
 }

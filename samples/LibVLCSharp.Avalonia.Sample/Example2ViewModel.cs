@@ -46,6 +46,11 @@ namespace LibVLCSharp.Avalonia.Sample
         {
             _libVLC = new LibVLC();
             MediaPlayer = new MediaPlayer(_libVLC);
+
+            
+            
+
+
             bool operationActive = false;
             var refresh = new Subject<Unit>();
 
@@ -101,6 +106,15 @@ namespace LibVLCSharp.Avalonia.Sample
             PlayCommand = ReactiveCommand.Create(
                () => Op(() =>
                {
+                   var videoPanel = window.Get<NativeControlHost>("VideoPanel");
+
+                   if (window.TryGetPlatformHandle() is { } platformHandle)
+                   {
+                       IntPtr hwnd = platformHandle.Handle; // Get native window handle
+                       Console.WriteLine($"HWND: {hwnd}");
+
+                       MediaPlayer.Hwnd = hwnd; // ✅ Set handle for VLC rendering
+                   }
                    //string absolute = new Uri(MediaUrl).AbsoluteUri;
                    bool isrtsp = MediaUrl.StartsWith("rtsp://");
                    bool isrtsps = MediaUrl.StartsWith("rtsps://");

@@ -1,5 +1,6 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using System;
 using System.Reactive.Linq;
@@ -12,8 +13,11 @@ namespace LibVLCSharp.Avalonia.Sample
         {
             this.InitializeComponent();
             //Renderer.DrawFps = true;
-
+            
             DataContext = new Example2ViewModel(this);
+            // Access VideoPanel after UI initialization
+            
+            
 
             //it's open when we set text a bug in autocomplete?
             var autoComplete = this.Get<AutoCompleteBox>("mediaUrl");
@@ -22,8 +26,12 @@ namespace LibVLCSharp.Avalonia.Sample
                             .Subscribe(_ => autoComplete.IsDropDownOpen = false);
 
 #if DEBUG
-            this.AttachDevTools();
+           // this.AttachDevTools();
 #endif
+        }
+        private void VideoPanel_PointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            Console.WriteLine("VideoPanel clicked!");
         }
 
         private void InitializeComponent()
