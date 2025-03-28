@@ -47,10 +47,6 @@ namespace LibVLCSharp.Avalonia.Sample
             _libVLC = new LibVLC();
             MediaPlayer = new MediaPlayer(_libVLC);
 
-            
-            
-
-
             bool operationActive = false;
             var refresh = new Subject<Unit>();
 
